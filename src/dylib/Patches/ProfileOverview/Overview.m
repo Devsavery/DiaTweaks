@@ -81,11 +81,32 @@ NSMenuItem *DPOverviewNewProfileItem(NSMenu *menu) {
     [self layoutSubtreeIfNeeded];
     [self moveFor:self.cards[self.current] opening:YES];
     [self.window makeFirstResponder:self];
+    [self watchForTakeover];
+}
+
+static NSString *DPActiveTab(NSWindow *window) { return DPOverviewText([[DPOverviewScriptWindow(window) valueForKey:@"activeTab"] valueForKey:@"tabId"]); }
+
+// A link opened from another app, or anything else that changes the tab, has to be seen: get out of its way, toward its profile.
+- (void)watchForTakeover {
+    NSString *tab = DPActiveTab(self.window);
+    NSInteger profile = DPOverviewActiveIndex(self.window);
+    __weak DPProfileSpread *weak = self;
+    self.watch = [NSTimer scheduledTimerWithTimeInterval:0.25 repeats:YES block:^(NSTimer *timer) {
+        DPProfileSpread *overview = weak;
+        NSWindow *window = overview.window;
+        if (!window || overview.closing) return [timer invalidate];
+        NSString *now = DPActiveTab(window);
+        NSInteger index = DPOverviewActiveIndex(window);
+        if ((!now || [now isEqual:tab]) && index == profile) return;
+        BOOL known = index >= 1 && index <= (NSInteger)overview.cards.count;
+        [overview closeOn:known ? overview.cards[index - 1] : nil target:nil];
+    }];
 }
 
 - (void)closeOn:(DPOverviewCard *)chosen target:(id)target {
     if (self.closing) return;
     self.closing = YES;
+    [self.watch invalidate];
     chosen = chosen ?: self.cards[self.current];
     if (target) [target performSelector:@selector(focus:) withObject:nil];
     [self moveFor:chosen opening:NO];
@@ -99,6 +120,10 @@ NSMenuItem *DPOverviewNewProfileItem(NSMenu *menu) {
     NSMenuItem *item = DPOverviewNewProfileItem(NSApp.mainMenu);
     [self closeOn:nil target:nil];
     if (item) [item.menu performActionForItemAtIndex:[item.menu indexOfItem:item]];
+}
+
+- (void)viewDidMoveToWindow {
+    if (!self.window) [self.watch invalidate];
 }
 
 - (void)mouseDown:(NSEvent *)event { [self closeOn:nil target:nil]; }

@@ -34,6 +34,7 @@ void DPOverviewHoverUnderPointer(NSView *list);
 @property(nonatomic) NSInteger current;  // Zero-based: the card for the profile showing now.
 @property(nonatomic) NSRect sidebar;     // Where the sidebar is, in our coordinates, or empty.
 @property(nonatomic) BOOL closing;
+@property(nonatomic, strong) NSTimer *watch;
 - (void)open;
 - (void)closeOn:(DPOverviewCard *)chosen target:(id)target;
 @end
