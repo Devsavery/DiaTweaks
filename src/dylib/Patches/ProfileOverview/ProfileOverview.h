@@ -18,9 +18,13 @@ NSString *DPOverviewText(id value);  // Scripting gives NSNull for what a tab la
 @interface DPOverviewFlipped : NSView
 @end
 
+@interface DPOverviewList : NSScrollView
+@end
+
 extern const CGFloat DPOverviewInset, DPOverviewRowHeight;
 NSTextField *DPOverviewLabel(NSString *text, NSFont *font, NSColor *color);
 NSView *DPOverviewRowFor(id tab, DPOverviewCard *card, CGFloat width, NSColor *ink);
+void DPOverviewHoverUnderPointer(NSView *list);
 
 @interface DPProfileSpread : NSView
 @property(nonatomic, strong) CAGradientLayer *backdrop;
@@ -53,7 +57,8 @@ NSArray<NSColor *> *DPOverviewColors(NSImage *snapshot);
 
 void DPOverviewOpen(NSWindow *window);
 BOOL DPOverviewShowing(NSWindow *window);
-void DPOverviewDismiss(NSWindow *window);
+void DPOverviewClose(NSWindow *window);    // Animated, back to the profile showing before.
+void DPOverviewDismiss(NSWindow *window);  // At once.
 void DPInstallOverviewGesture(void);
 NSString *DPOverviewGestureProblem(void);
 

@@ -6,10 +6,13 @@ static CGFloat DPLuminance(NSColor *color) { return 0.2126 * color.redComponent 
 
 @implementation DPOverviewCard {
     NSTextField *_name;
-    NSScrollView *_list;
+    DPOverviewList *_list;
     CAGradientLayer *_fill;
     NSColor *_ink;
+    id _scrolled;
 }
+
+- (void)dealloc { [NSNotificationCenter.defaultCenter removeObserver:_scrolled]; }
 
 - (instancetype)initWithProfile:(id)profile snapshot:(NSImage *)snapshot {
     self = [super initWithFrame:NSZeroRect];
@@ -30,12 +33,18 @@ static CGFloat DPLuminance(NSColor *color) { return 0.2126 * color.redComponent 
     self.layer.borderColor = [NSColor colorWithWhite:1 alpha:0.18].CGColor;
     _name = DPOverviewLabel(DPOverviewText([profile valueForKey:@"name"]), [NSFont systemFontOfSize:12 weight:NSFontWeightSemibold], [_ink colorWithAlphaComponent:0.6]);
     [self addSubview:_name];
-    _list = [NSScrollView new];
+    _list = [DPOverviewList new];
+    _list.horizontalScrollElasticity = NSScrollElasticityNone;
     _list.drawsBackground = NO;
     _list.hasVerticalScroller = YES;
     _list.autohidesScrollers = YES;
     _list.scrollerStyle = NSScrollerStyleOverlay;
     [self addSubview:_list];
+    _list.contentView.postsBoundsChangedNotifications = YES;
+    __weak NSScrollView *list = _list;
+    _scrolled = [NSNotificationCenter.defaultCenter addObserverForName:NSViewBoundsDidChangeNotification object:_list.contentView queue:nil usingBlock:^(NSNotification *note) {
+        DPOverviewHoverUnderPointer(list);
+    }];
     if (snapshot) {
         self.ghost = [CALayer layer];
         self.ghost.contents = (__bridge id)[snapshot CGImageForProposedRect:NULL context:nil hints:nil];

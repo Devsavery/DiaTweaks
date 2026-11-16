@@ -6,11 +6,41 @@ const CGFloat DPOverviewInset = 8, DPOverviewRowHeight = 30;
 - (BOOL)isFlipped { return YES; }
 @end
 
+// A scroll view keeps a swipe it starts for itself, past where the swipe out of the overview can see it: pass sideways ones on.
+@implementation DPOverviewList {
+    BOOL _sideways;
+}
+
+- (void)scrollWheel:(NSEvent *)event {
+    if (event.phase == NSEventPhaseBegan || event.phase == NSEventPhaseMayBegin) _sideways = fabs(event.scrollingDeltaX) > fabs(event.scrollingDeltaY);
+    if (_sideways) [self.nextResponder scrollWheel:event];
+    else [super scrollWheel:event];
+}
+
+@end
+
 @interface DPOverviewRow : NSView
 @property(nonatomic, strong) id tab;
 @property(nonatomic, weak) DPOverviewCard *card;
 @property(nonatomic, strong) NSColor *ink;
 @end
+
+// One row lit at most: scrolling under a still pointer brings rows in without ever telling the old ones it left.
+static __weak DPOverviewRow *DPHovered;
+
+static void DPHover(DPOverviewRow *row) {
+    if (DPHovered == row) return;
+    DPHovered.layer.backgroundColor = nil;
+    row.layer.backgroundColor = [row.ink colorWithAlphaComponent:0.1].CGColor;
+    DPHovered = row;
+}
+
+void DPOverviewHoverUnderPointer(NSView *list) {
+    NSWindow *window = list.window;
+    NSView *hit = window ? [window.contentView.superview hitTest:[window.contentView.superview convertPoint:window.mouseLocationOutsideOfEventStream fromView:nil]] : nil;
+    while (hit && ![hit isKindOfClass:DPOverviewRow.class]) hit = hit.superview;
+    DPHover((DPOverviewRow *)hit);
+}
 
 @implementation DPOverviewRow
 
@@ -20,8 +50,8 @@ const CGFloat DPOverviewInset = 8, DPOverviewRowHeight = 30;
     [self addTrackingArea:[[NSTrackingArea alloc] initWithRect:NSZeroRect options:NSTrackingMouseEnteredAndExited | NSTrackingActiveInKeyWindow | NSTrackingInVisibleRect owner:self userInfo:nil]];
 }
 
-- (void)mouseEntered:(NSEvent *)event { self.layer.backgroundColor = [self.ink colorWithAlphaComponent:0.1].CGColor; }
-- (void)mouseExited:(NSEvent *)event { self.layer.backgroundColor = nil; }
+- (void)mouseEntered:(NSEvent *)event { DPHover(self); }
+- (void)mouseExited:(NSEvent *)event { if (DPHovered == self) DPHover(nil); }
 - (void)mouseDown:(NSEvent *)event { if (self.card.picked) self.card.picked(self.card, self.tab); }
 
 @end

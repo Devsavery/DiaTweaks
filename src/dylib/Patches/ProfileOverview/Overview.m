@@ -103,6 +103,9 @@ NSMenuItem *DPOverviewNewProfileItem(NSMenu *menu) {
 
 - (void)mouseDown:(NSEvent *)event { [self closeOn:nil target:nil]; }
 
+// The end of the line for a swipe: past here, Dia's window pages the sidebar hidden underneath.
+- (void)scrollWheel:(NSEvent *)event {}
+
 - (void)keyDown:(NSEvent *)event {
     if (event.keyCode == 53) return [self closeOn:nil target:nil];  // Escape
     [super keyDown:event];

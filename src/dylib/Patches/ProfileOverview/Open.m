@@ -52,6 +52,10 @@ void DPOverviewOpen(NSWindow *window) {
     [overview open];
 }
 
+void DPOverviewClose(NSWindow *window) {
+    [DPOverviewIn(window) closeOn:nil target:nil];
+}
+
 void DPOverviewDismiss(NSWindow *window) {
     [DPOverviewIn(window) removeFromSuperview];
 }

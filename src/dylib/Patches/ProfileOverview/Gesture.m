@@ -2,8 +2,9 @@
 
 static const CGFloat DPPullDistance = 90;
 
-static BOOL DPPulling, DPDecided;
+static BOOL DPPulling, DPDecided, DPLeaving;  // Leaving: the swipe back out of the overview.
 static CGFloat DPPulled;
+static CFTimeInterval DPSwallowUntil;  // After a swipe closes the overview, the rest of it would page Dia's sidebar.
 static __weak NSWindow *DPPullWindow;
 
 static BOOL DPOnLastProfile(NSWindow *window) {
@@ -18,7 +19,8 @@ static BOOL DPInSidebar(NSEvent *event) {
 
 static void DPTrackPull(NSEvent *event) {
     if (event.phase == NSEventPhaseBegan) {
-        DPPulling = DPInSidebar(event) && !DPOverviewShowing(event.window) && DPOnLastProfile(event.window);
+        DPLeaving = DPOverviewShowing(event.window);
+        DPPulling = DPLeaving || (DPInSidebar(event) && DPOnLastProfile(event.window));
         DPPullWindow = event.window;
         DPDecided = NO;
         DPPulled = 0;
@@ -31,11 +33,13 @@ static void DPTrackPull(NSEvent *event) {
         DPDecided = YES;
         if (fabs(event.scrollingDeltaY) > fabs(event.scrollingDeltaX)) return (void)(DPPulling = NO);
     }
-    // Toward the next profile the content moves left, whichever way the user's scrolling runs.
-    DPPulled = MAX(0, DPPulled - event.scrollingDeltaX);
+    // Toward the next profile the content moves left, whichever way the user's scrolling runs; back out is the other way.
+    DPPulled = MAX(0, DPPulled + (DPLeaving ? event.scrollingDeltaX : -event.scrollingDeltaX));
     if (DPPulled < DPPullDistance) return;
     DPPulling = NO;
-    DPOverviewOpen(DPPullWindow);
+    if (!DPLeaving) return DPOverviewOpen(DPPullWindow);
+    DPSwallowUntil = CACurrentMediaTime() + 1.5;
+    DPOverviewClose(DPPullWindow);
 }
 
 // Dia's tab list is a scroll view, which reads a swipe's events in a loop of its own once it starts: every one is dequeued here.
@@ -45,8 +49,18 @@ static NSEvent *DPApplication_nextEvent(NSApplication *self, SEL _cmd, NSEventMa
     return event;
 }
 
+// Until the swipe and its momentum end, or a new one starts.
+static BOOL DPSwallowRest(NSEvent *event) {
+    BOOL over = CACurrentMediaTime() > DPSwallowUntil || event.phase == NSEventPhaseBegan || event.phase == NSEventPhaseMayBegin;
+    if (over || event.momentumPhase == NSEventPhaseEnded || event.momentumPhase == NSEventPhaseCancelled) DPSwallowUntil = 0;
+    return !over;
+}
+
 void DPInstallOverviewGesture(void) {
     DPHookClass(NSApplication.class, @selector(nextEventMatchingMask:untilDate:inMode:dequeue:), (IMP)DPApplication_nextEvent);
+    [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskScrollWheel handler:^NSEvent *(NSEvent *event) {
+        return DPSwallowUntil && DPSwallowRest(event) ? nil : event;
+    }];
 }
 
 NSString *DPOverviewGestureProblem(void) {
