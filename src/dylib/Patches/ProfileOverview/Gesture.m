@@ -4,6 +4,7 @@ static const CGFloat DPPullDistance = 90;
 
 static BOOL DPPulling, DPDecided, DPLeaving;  // Leaving: the swipe back out of the overview.
 static CGFloat DPPulled;
+static BOOL DPHooked;
 static CFTimeInterval DPSwallowUntil;  // After a swipe closes the overview, the rest of it would page Dia's sidebar.
 static __weak NSWindow *DPPullWindow;
 
@@ -57,14 +58,15 @@ static BOOL DPSwallowRest(NSEvent *event) {
 }
 
 void DPInstallOverviewGesture(void) {
-    DPHookClass(NSApplication.class, @selector(nextEventMatchingMask:untilDate:inMode:dequeue:), (IMP)DPApplication_nextEvent);
+    SEL next = @selector(nextEventMatchingMask:untilDate:inMode:dequeue:);
+    DPHookClass(NSApplication.class, next, (IMP)DPApplication_nextEvent);
+    DPHooked = class_getMethodImplementation(NSApplication.class, next) == (IMP)DPApplication_nextEvent;
     [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskScrollWheel handler:^NSEvent *(NSEvent *event) {
         return DPSwallowUntil && DPSwallowRest(event) ? nil : event;
     }];
 }
 
+// Close Tabs from Tab Switcher hooks the same method and may sit in front, calling through to this one: check it went in, not that it's last.
 NSString *DPOverviewGestureProblem(void) {
-    if (class_getMethodImplementation(NSApplication.class, @selector(nextEventMatchingMask:untilDate:inMode:dequeue:)) != (IMP)DPApplication_nextEvent)
-        return @"swipes in the sidebar don't reach the overview";
-    return nil;
+    return DPHooked ? nil : @"swipes in the sidebar don't reach the overview";
 }
