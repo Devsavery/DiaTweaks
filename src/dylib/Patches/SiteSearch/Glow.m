@@ -9,12 +9,16 @@ static NSView *DPRoundedBar(NSView *text) {
     return nil;
 }
 
-// Fits the glow's parts to the bar, which grows and shrinks as the suggestions come and go.
-static void DPFitGlow(CALayer *glow, CALayer *bar) {
-    if (CGRectEqualToRect(glow.frame, bar.bounds) && [[glow valueForKey:@"DPRadius"] doubleValue] == bar.cornerRadius) return;
+// Fits the glow's parts to the bar, which grows and shrinks as the suggestions come and go. Compact Command Bar clips
+// the bar's bottom off, so it's the part that shows.
+static void DPFitGlow(CALayer *glow, NSView *view) {
+    CALayer *bar = view.layer;
+    NSRect shown = view.visibleRect;
+    CGRect frame = NSIsEmptyRect(shown) ? bar.bounds : NSRectToCGRect(shown);
+    if (CGRectEqualToRect(glow.frame, frame) && [[glow valueForKey:@"DPRadius"] doubleValue] == bar.cornerRadius) return;
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
-    glow.frame = bar.bounds;
+    glow.frame = frame;
     [glow setValue:@(bar.cornerRadius) forKey:@"DPRadius"];
     for (CALayer *part in glow.sublayers) {
         part.frame = glow.bounds;
@@ -65,12 +69,12 @@ void DPShowGlow(NSTextView *text, NSColor *color) {
         DPSet(text, &DPGlowKey, glow);
     }
     if (glow.superlayer != bar.layer) [bar.layer addSublayer:glow];
-    DPFitGlow(glow, bar.layer);
+    DPFitGlow(glow, bar);
     glow.opacity = 1;
 }
 
 void DPRefreshGlow(NSTextView *text) {
     CALayer *glow = DPGet(text, &DPGlowKey);
     NSView *bar = DPRoundedBar(text);
-    if (glow && bar.layer) DPFitGlow(glow, bar.layer);
+    if (glow && bar.layer) DPFitGlow(glow, bar);
 }
