@@ -1,17 +1,21 @@
 #import "StdPatch/StdPatch.h"
 
-extern DPPatch DPSiteSearch;
+extern DPPatch DPSiteSearch, DPPopularSites;
 
-// A site that can be searched from the command bar: `host` as typed ("amazon.com"), `name` as shown ("Amazon"), `url`
-// with {searchTerms} where the query goes, and its brand `color`, nil if it's to come from its icon.
+// A site that can be searched from the command bar: `keyword` as typed ("amazon.com", or a shortcut such as "figma"),
+// `host` it lives at ("figma.com"), `name` as shown ("Amazon"), `url` with {searchTerms} where the query goes, and its
+// brand `color`, nil if it's to come from its icon.
 @interface DPSite : NSObject
-@property(copy) NSString *host, *name, *url;
+@property(copy) NSString *keyword, *host, *name, *url;
 @property(strong) NSColor *color;
 @end
 
 DPSite *DPSiteFor(NSString *typed, NSWindow *window);  // nil if what was typed isn't a site to search.
 NSURL *DPSiteSearchURL(DPSite *site, NSString *query);  // The site itself for an empty query.
 DPSite *DPSiteOfField(NSTextView *text);  // The site chosen in the bar's field, nil if none.
+id DPSitePreferences(NSWindow *window);  // The profile's ArcBrowserContextPreferences, which hold its site search.
+void DPTabOnly(NSWindow *window);  // Turns off Dia's own Space trigger in the window's profile while the patch is on.
+void DPApplySpace(void);  // DPTabOnly for every open window.
 
 NSImage *DPSiteIconFor(NSTextView *text, DPSite *site);
 void DPShowChip(NSTextView *text, DPSite *site, NSImage *icon, NSColor *color);  // The site's icon and name in the field, or none for nil.
@@ -26,6 +30,7 @@ void DPRefreshGlow(NSTextView *text);  // Fitted to the bar again after it chang
 void DPUpdateSuggestions(NSTextView *text);  // Hidden while a site is chosen.
 
 void DPInstallSiteSuggestions(void);
+void DPInstallSiteEngines(void);
 void DPInstallSitePlaceholder(void);
 void DPInstallSiteInline(void);
 void DPInstallSiteChip(void);

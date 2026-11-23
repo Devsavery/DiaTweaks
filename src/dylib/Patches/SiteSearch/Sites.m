@@ -10,7 +10,7 @@ enum { DPNoColor = -1, DPMono = -2 };
 // be seen on a dark bar; DPNoColor to take it from the site's icon.
 static DPSite *DPMakeSite(NSString *host, NSString *name, NSString *url, long rgb) {
     DPSite *site = [DPSite new];
-    site.host = host;
+    site.keyword = site.host = host;
     site.name = name;
     site.url = url;
     if (rgb == DPMono) site.color = NSColor.labelColor;
@@ -70,29 +70,49 @@ static NSString *DPBareHost(NSString *typed) {
     return text;
 }
 
+// "amazon" for amazon.com or amazon.co.uk, but not "google" for maps.google.com.
+static BOOL DPNames(NSString *host, NSString *bare) {
+    if ([host isEqual:bare]) return YES;
+    NSArray<NSString *> *labels = [host componentsSeparatedByString:@"."];
+    if (labels.count < 2 || ![labels[0] isEqual:bare]) return NO;
+    return labels.count == 2 || (labels.count == 3 && labels[1].length <= 3 && labels[2].length == 2);
+}
+
 static BOOL DPMatches(DPSite *site, NSString *bare) {
-    if ([site.host isEqual:bare]) return YES;
-    // "amazon" for amazon.com, but not "google" for maps.google.com.
-    NSArray<NSString *> *labels = [site.host componentsSeparatedByString:@"."];
-    return labels.count == 2 && [labels[0] isEqual:bare];
+    return DPNames(site.keyword, bare) || DPNames(site.host, bare);
 }
 
 // The sites Chromium learned from search boxes, as Chrome's Tab to Search uses them; the search engines' own come too.
-static NSArray<DPSite *> *DPChromiumSites(NSWindow *window) {
+id DPSitePreferences(NSWindow *window) {
     id browser = DPBrowserOfWindow(window.parentWindow ?: window) ?: DPCommandBrowser();
     id context = [browser respondsToSelector:@selector(preferences)] ? browser : [browser respondsToSelector:@selector(context)] ? [(NSObject *)browser valueForKey:@"context"] : nil;
-    id preferences = [context respondsToSelector:@selector(preferences)] ? [(NSObject *)context valueForKey:@"preferences"] : nil;
+    return [context respondsToSelector:@selector(preferences)] ? [(NSObject *)context valueForKey:@"preferences"] : nil;
+}
+
+static BOOL DPReadingEngines;
+
+static NSArray<DPSite *> *DPChromiumSites(NSWindow *window) {
+    id preferences = DPSitePreferences(window);
+    DPReadingEngines = YES;
     NSArray *engines = [preferences respondsToSelector:@selector(getSearchEngines)] ? [preferences performSelector:@selector(getSearchEngines)] : nil;
+    DPReadingEngines = NO;
     NSMutableArray *sites = [NSMutableArray new];
+    NSRegularExpression *placeholders = [NSRegularExpression regularExpressionWithPattern:@"\\{[^}]*\\}" options:0 error:nil];
     for (NSObject *engine in [engines isKindOfClass:NSArray.class] ? engines : @[]) {
         NSString *keyword = [engine valueForKey:@"keyword"], *name = [engine valueForKey:@"name"], *url = [engine valueForKey:@"url"];
         if (![keyword isKindOfClass:NSString.class] || ![url isKindOfClass:NSString.class] || ![url containsString:@"{searchTerms}"]) continue;
         if ([keyword hasPrefix:@"@"] || ![url hasPrefix:@"http"]) continue;  // @bookmarks and @history open Chromium's own pages.
-        NSString *host = DPBareHost(keyword);
+        if ([engine respondsToSelector:@selector(status)] && [[engine valueForKey:@"status"] integerValue] == 2) continue;  // Turned off in Dia's settings.
+        // A shortcut such as "figma" is no address: the site is where its search goes.
+        NSString *bare = [placeholders stringByReplacingMatchesInString:url options:0 range:NSMakeRange(0, url.length) withTemplate:@""];
+        NSString *host = DPBareHost([NSURL URLWithString:bare].host ?: keyword);
         // An auto-added engine is named after its host; the part before the dot reads better.
-        if (![name isKindOfClass:NSString.class] || !name.length || [DPBareHost(name) isEqual:host])
+        if (![name isKindOfClass:NSString.class] || !name.length || [DPBareHost(name) isEqual:DPBareHost(keyword)] || [DPBareHost(name) isEqual:host])
             name = [host componentsSeparatedByString:@"."].firstObject.capitalizedString;
-        [sites addObject:DPMakeSite(host, name, url, DPNoColor)];
+        DPSite *site = DPMakeSite(host, name, url, DPNoColor);
+        site.keyword = DPBareHost(keyword);
+        for (DPSite *known in DPBuiltInSites()) if ([known.host isEqual:host]) site.color = known.color;  // Its brand color still.
+        [sites addObject:site];
     }
     return sites;
 }
@@ -100,8 +120,9 @@ static NSArray<DPSite *> *DPChromiumSites(NSWindow *window) {
 DPSite *DPSiteFor(NSString *typed, NSWindow *window) {
     NSString *bare = DPBareHost(typed);
     if (!bare.length || [bare rangeOfCharacterFromSet:NSCharacterSet.whitespaceCharacterSet].location != NSNotFound) return nil;
-    for (DPSite *site in DPBuiltInSites()) if (DPMatches(site, bare)) return site;
+    // The user's own site search comes first: theirs may be amazon.de where the built-in one is amazon.com.
     for (DPSite *site in DPChromiumSites(window)) if (DPMatches(site, bare)) return site;
+    if (DPPopularSites.on) for (DPSite *site in DPBuiltInSites()) if (DPMatches(site, bare)) return site;
     return nil;
 }
 
@@ -115,4 +136,20 @@ NSURL *DPSiteSearchURL(DPSite *site, NSString *query) {
     NSRegularExpression *rest = [NSRegularExpression regularExpressionWithPattern:@"\\{[^}]*\\}" options:0 error:nil];
     url = [rest stringByReplacingMatchesInString:url options:0 range:NSMakeRange(0, url.length) withTemplate:@""];
     return [NSURL URLWithString:url];
+}
+
+// Dia makes its own site search of what's typed when it starts with a shortcut, "amazon.com toothpaste", and puts it
+// first, where Return takes it. Arc searched a site only after Tab, so while the bar's field is being typed in Dia's code
+// finds no shortcuts. It asks again with each key; the shortcuts in Settings are read with no field in use.
+static NSArray *DPPreferences_getSearchEngines(id self, SEL _cmd) {
+    NSArray *engines = DPCallOriginal(DPPreferences_getSearchEngines, self);
+    if (!NSThread.isMainThread) return engines;
+    NSView *responder = (NSView *)NSApp.keyWindow.firstResponder;
+    if (!DPSiteSearch.on || DPReadingEngines || ![responder isKindOfClass:NSView.class]) return engines;
+    while (responder && !DPIsKind(responder, DPDiaCommandBarText)) responder = responder.superview;
+    return responder ? @[] : engines;
+}
+
+void DPInstallSiteEngines(void) {
+    DPHook("ArcBrowserContextPreferences", @selector(getSearchEngines), (IMP)DPPreferences_getSearchEngines);
 }

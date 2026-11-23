@@ -62,7 +62,7 @@ static BOOL DPInput_command(NSView *self, SEL _cmd, NSTextView *text, SEL comman
     }
     if (command == @selector(deleteBackward:) && !text.string.length) {
         DPSetSite(text, nil);
-        DPReplaceText(text, site.host);
+        DPReplaceText(text, site.keyword);
         return YES;
     }
     if (command == @selector(insertTab:)) return YES;
@@ -79,12 +79,16 @@ static BOOL DPInput_command(NSView *self, SEL _cmd, NSTextView *text, SEL comman
 static void DPText_viewDidMoveToWindow(NSTextView *self, SEL _cmd) {
     DPCallOriginal(DPText_viewDidMoveToWindow, self);
     if (DPSiteOf(self)) DPSetSite(self, nil);
+    NSView *input = self;
+    while (input && !DPIsKind(input, DPDiaCommandBarText)) input = input.superview;
+    if (input && self.window) DPTabOnly(self.window);
 }
 
 static void DPInstallSiteSearch(void) {
     DPHook(DPDiaCommandBarText, @selector(textView:doCommandBySelector:), (IMP)DPInput_command);
     DPHookClass(NSTextView.class, @selector(viewDidMoveToWindow), (IMP)DPText_viewDidMoveToWindow);
     DPInstallSiteSuggestions();
+    DPInstallSiteEngines();
     DPInstallSitePlaceholder();
     DPInstallSiteInline();
     DPInstallSiteChip();
@@ -92,6 +96,7 @@ static void DPInstallSiteSearch(void) {
 }
 
 static void DPApplySiteSearch(DPPatch *patch) {
+    DPApplySpace();
     if (patch->on) return;
     for (NSView *view in DPFindViews("NSTextView"))
         if (DPSiteOf((NSTextView *)view)) DPSetSite((NSTextView *)view, nil);
@@ -107,7 +112,7 @@ DP_PATCH(DPSiteSearch) {
     .key = @"siteSearch",
     .order = 93,
     .title = @"Search Sites with Tab",
-    .detail = @"Type a site such as amazon.com in the command bar and press Tab to search it: type what to look for and press Return, or Esc to start over. Works with popular sites and any site whose search box you've used.",
+    .detail = @"Type a site such as amazon.com, or one of your own site search shortcuts, in the command bar and press Tab to search it: type what to look for and press Return, or Esc to start over. As in Arc, Space no longer starts a site search.",
     .symbol = @"magnifyingglass.circle.fill magnifyingglass",
     .tint = @"systemOrangeColor",
     .section = @"Command Bar",
